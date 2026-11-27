@@ -176,6 +176,7 @@ details summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;alig
     <div class="grid">
       <label>UF de origem (faturamento)<select id="p-orig"></select></label>
       <label>Produto importado (ICMS 4%)<select id="p-imp"><option value="0">Não</option><option value="1">Sim</option></select></label>
+      <label>IR/CS (%)<input id="p-ircs" inputmode="decimal" title="Imposto de renda e contribuição social sobre o preço de venda"></label>
       <label>Outras deduções (%)<input id="p-out" inputmode="decimal"></label>
       <label class="full">Empresa (cabeçalho do PDF)<input id="p-emp" placeholder="Razão social ou nome fantasia"></label>
       <label class="full">Dados da empresa no PDF<input id="p-empd" placeholder="CNPJ, endereço, telefone, e-mail"></label>
@@ -248,7 +249,7 @@ const nb=v=>isFinite(v)?v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximu
 const EPS=1e-9;
 const n4=v=>isFinite(v)?v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'';
 function icmsRegra(o,d,imp){if(o===d)return UFS[d][1];if(imp)return 4;const sul=['S','SE'].includes(UFS[o][0])&&o!=='ES';const dest=['N','NE','CO'].includes(UFS[d][0])||d==='ES';return sul&&dest?7:12}
-function padrao(){const c={trava:10,empresa:'',empresaDados:'',validade:7,origem:'SC',importado:false,vigente:'auto',pisSemIcms:true,cbsSemIcms:true,cenarios:[{ano:2026,pis:1.65,cofins:7.6,cbs:0.9,ibs:0.1,forma:'comp',icmsFat:100},{ano:2027,pis:0,cofins:0,cbs:11.2,ibs:0.1,forma:'fora',icmsFat:100}],outros:0,comissao:5,publicidade:2,taxa:1.5,prazo:30,juros:'c',ufs:{},linhas:[{pre:'',nome:'Linha A',mm:25},{pre:'',nome:'Linha B',mm:18},{pre:'',nome:'Linha C',mm:12}],itens:[{cod:'1001',desc:'Produto exemplo 1',linha:'Linha A',custo:42.5},{cod:'1002',desc:'Produto exemplo 2',linha:'Linha B',custo:18.9},{cod:'1003',desc:'Produto exemplo 3',linha:'Linha C',custo:7.35}]};
+function padrao(){const c={ircs:3.1,trava:10,empresa:'',empresaDados:'',validade:7,origem:'SC',importado:false,vigente:'auto',pisSemIcms:true,cbsSemIcms:true,cenarios:[{ano:2026,pis:1.65,cofins:7.6,cbs:0.9,ibs:0.1,forma:'comp',icmsFat:100},{ano:2027,pis:0,cofins:0,cbs:11.2,ibs:0.1,forma:'fora',icmsFat:100}],outros:0,comissao:5,publicidade:2,taxa:1.5,prazo:30,juros:'c',ufs:{},linhas:[{pre:'',nome:'Linha A',mm:25},{pre:'',nome:'Linha B',mm:18},{pre:'',nome:'Linha C',mm:12}],itens:[{cod:'1001',desc:'Produto exemplo 1',linha:'Linha A',custo:42.5},{cod:'1002',desc:'Produto exemplo 2',linha:'Linha B',custo:18.9},{cod:'1003',desc:'Produto exemplo 3',linha:'Linha C',custo:7.35}]};
   for(const u in UFS)c.ufs[u]={interna:UFS[u][1],icms:icmsRegra(c.origem,u,false),frete:FR[UFS[u][0]]};return c}
 let usuario=null;
 let cfg=padrao(),db=null,dono=false,props=[],propsLoc=[],soLocal=false,seq=0;
@@ -269,7 +270,7 @@ function deducoes(uf,o){const u=cfg.ufs[uf]||{icms:0,frete:0};const sc=cenario(o
   const cb=(num(sc.cbs)||0)/100*bc,ib=(num(sc.ibs)||0)/100*bc;const cbs=sc.forma==='dentro'?cb:0,ibs=sc.forma==='dentro'?ib:0;
   const i=num(o.taxa)/100,d=num(o.prazo)||0;
   const fin=cfg.juros==='s'?i*d/30:cfg.juros==='d'?1-1/Math.pow(1+i,d/30):Math.pow(1+i,d/30)-1;
-  const it={icms,pis,cofins,cbs,ibs,frete:num(u.frete)/100,comissao:num(o.com)/100,publicidade:num(o.pub)/100,financeiro:fin||0,verba:Math.max(0,num(o.verbaPct)||0),outros:num(cfg.outros)/100||0};
+  const it={icms,pis,cofins,cbs,ibs,frete:num(u.frete)/100,comissao:num(o.com)/100,publicidade:num(o.pub)/100,financeiro:fin||0,verba:Math.max(0,num(o.verbaPct)||0),ircs:(isFinite(num(cfg.ircs))?num(cfg.ircs):3.1)/100,outros:num(cfg.outros)/100||0};
   for(const k in it)if(!isFinite(it[k]))it[k]=0;it.total=Object.values(it).reduce((a,b)=>a+b,0);it.sc=sc;it.fora=sc.forma==='fora'?cb+ib:0;it.dest=cb+ib;return it}
 const precoMin=(c,D,mm)=>{const den=1-D-mm;return den>0?c/den:NaN};
 const linhaMM=n=>{const l=cfg.linhas.find(x=>x.nome===n);return l?num(l.mm)/100:0};
@@ -301,7 +302,7 @@ function calc(){
   if(tem){const ok=R.m>=R.mmp-EPS;chip.className='chip '+(ok&&!abaixo?'ok':'bad');
     chip.textContent=ok?(abaixo?'Pedido atinge a mínima, mas '+abaixo+' item(ns) abaixo da linha':'Pedido e itens dentro da margem mínima'):'Pedido abaixo da margem mínima ponderada'}
   else{chip.className='chip ok';chip.textContent=P.itens.length?'Informe os preços':'Adicione itens à proposta'}
-  const Pr=R.rec;const rows=[['Total do pedido',Pr,'']].concat([['ICMS','icms'],['PIS','pis'],['COFINS','cofins'],['CBS','cbs'],['IBS','ibs'],['Frete','frete'],['Comissão','comissao'],['Publicidade','publicidade'],['Financeiro','financeiro'],['Verba','verba'],['Outras','outros']].filter(r=>D[r[1]]>0).map(r=>[r[0]+' '+pc(D[r[1]],1),-Pr*D[r[1]],'neg']));
+  const Pr=R.rec;const rows=[['Total do pedido',Pr,'']].concat([['ICMS','icms'],['PIS','pis'],['COFINS','cofins'],['CBS','cbs'],['IBS','ibs'],['Frete','frete'],['Comissão','comissao'],['Publicidade','publicidade'],['Financeiro','financeiro'],['Verba','verba'],['IR/CS','ircs'],['Outras','outros']].filter(r=>D[r[1]]>0).map(r=>[r[0]+' '+pc(D[r[1]],1),-Pr*D[r[1]],'neg']));
   rows.push(['Custo dos itens',-R.cus,'neg'],['Margem',R.mc,'m'+(R.m<R.mmp-EPS?' bad':'')]);
   $('cas').innerHTML=tem?rows.map(r=>`<div class="row ${r[2]}"><span>${esc(r[0])}</span><span class="bar"><i style="width:${Math.min(100,Math.abs(r[1])/Pr*100).toFixed(1)}%"></i></span><span class="v">${brl(r[1])}</span></div>`).join(''):'<p>A composição do pedido aparece quando os itens tiverem preço.</p>';
   const tv=travado(),bl=!!tv&&R.rec>0;for(const id of['salvar-p','pdf','cp-cli']){$(id).setAttribute('aria-disabled',bl?'true':'false');$(id).classList.toggle('off',bl)}
@@ -411,7 +412,7 @@ $('tb-sav').addEventListener('click',async e=>{const t=e.target;const ab=t.datas
 /* ---------- parâmetros ---------- */
 function popPar(){
   $('p-orig').innerHTML=Object.keys(UFS).map(u=>`<option>${u}</option>`).join('');$('p-orig').value=cfg.origem;
-  $('p-imp').value=cfg.importado?'1':'0';$('p-cbsb').value=cfg.cbsSemIcms?'1':'0';$('p-pisb').value=cfg.pisSemIcms?'1':'0';popCen();$('p-out').value=f2(cfg.outros);$('p-emp').value=cfg.empresa||'';$('p-empd').value=cfg.empresaDados||'';$('p-val').value=f2(num(cfg.validade));$('p-trava').value=f2(num(cfg.trava));
+  $('p-imp').value=cfg.importado?'1':'0';$('p-cbsb').value=cfg.cbsSemIcms?'1':'0';$('p-pisb').value=cfg.pisSemIcms?'1':'0';popCen();$('p-out').value=f2(cfg.outros);$('p-ircs').value=f2(num(cfg.ircs));$('p-emp').value=cfg.empresa||'';$('p-empd').value=cfg.empresaDados||'';$('p-val').value=f2(num(cfg.validade));$('p-trava').value=f2(num(cfg.trava));
   $('p-com').value=f2(cfg.comissao);$('p-pub').value=f2(cfg.publicidade);$('p-taxa').value=f2(cfg.taxa);$('p-prazo').value=f2(cfg.prazo);$('p-jur').value=cfg.juros;
   $('tb-pu').tBodies[0].innerHTML=Object.keys(UFS).map(u=>{const x=cfg.ufs[u];return `<tr><td>${u}</td><td><input data-u="${u}" data-k="interna" value="${f2(num(x.interna))}" inputmode="decimal" aria-label="Alíquota interna ${u}"></td><td><input data-u="${u}" data-k="icms" value="${f2(num(x.icms))}" inputmode="decimal" aria-label="ICMS ${u}"></td><td><input data-u="${u}" data-k="frete" value="${f2(num(x.frete))}" inputmode="decimal" aria-label="Frete ${u}"></td></tr>`}).join('');
   popLi();popIt()}
@@ -429,7 +430,7 @@ function popIt(){const q=$('busca').value.trim().toLowerCase();const r=cfg.itens
   $('tb-it').tBodies[0].innerHTML=r.slice(0,200).map(i=>`<tr><td>${esc(i.cod)}</td><td>${esc(i.desc)}</td><td>${esc(i.linha)}</td><td class="n">${brl(num(i.custo))}</td></tr>`).join('')||'<tr><td colspan="4">Nenhum item.</td></tr>';
   $('base-info').textContent=cfg.base?'Base atual: '+cfg.base.arquivo+' · carregada em '+new Date(cfg.base.em).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})+' · '+cfg.itens.length+' itens':'Nenhuma planilha carregada ainda: itens de exemplo.';
   $('n-it').textContent=cfg.itens.length+' itens na base'+(r.length>200?' · tabela mostra 200 de '+r.length+'; use a busca':'')}
-const gmap={'p-orig':['origem',v=>v],'p-imp':['importado',v=>v==='1'],'p-cbsb':['cbsSemIcms',v=>v==='1'],'p-pisb':['pisSemIcms',v=>v==='1'],'p-vig':['vigente',v=>v],'p-out':['outros',num],'p-emp':['empresa',v=>v.trim()],'p-empd':['empresaDados',v=>v.trim()],'p-val':['validade',num],'p-trava':['trava',num],'p-com':['comissao',num],'p-pub':['publicidade',num],'p-taxa':['taxa',num],'p-prazo':['prazo',num],'p-jur':['juros',v=>v]};
+const gmap={'p-orig':['origem',v=>v],'p-imp':['importado',v=>v==='1'],'p-cbsb':['cbsSemIcms',v=>v==='1'],'p-pisb':['pisSemIcms',v=>v==='1'],'p-vig':['vigente',v=>v],'p-out':['outros',num],'p-ircs':['ircs',num],'p-emp':['empresa',v=>v.trim()],'p-empd':['empresaDados',v=>v.trim()],'p-val':['validade',num],'p-trava':['trava',num],'p-com':['comissao',num],'p-pub':['publicidade',num],'p-taxa':['taxa',num],'p-prazo':['prazo',num],'p-jur':['juros',v=>v]};
 $('v-par').addEventListener('change',e=>{const t=e.target;
   if(gmap[t.id]){const[k,fn]=gmap[t.id];cfg[k]=fn(t.value);if(t.id==='p-orig'||t.id==='p-imp')regra();if(t.id==='p-vig')popAno()}
   else if(t.dataset.c!==undefined){const c=cfg.cenarios[+t.dataset.c];c[t.dataset.k]=t.dataset.k==='forma'?t.value:t.dataset.k==='ano'?parseInt(t.value,10)||c.ano:num(t.value);if(t.dataset.k==='ano')popCen();popAno()}
@@ -519,7 +520,7 @@ async function decifrarPacote(login,pw){
   const c=JSON.parse(td.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:ub64(PKG.iv)},await chave(pw,ub64(PKG.salt)),ub64(PKG.dados))));
   return{c,raw:null,u:{id:'v1',nome:'',login:'',admin:false}}}
 function lockShow(modo,msg){lkModo=modo;$('lock').hidden=false;$('lk-err').textContent=msg||'';$('lk-pw').value='';
-  $('lk-t').textContent=modo==='adm'?'Modo administrador':'Acesso à plataforma';$('lk-d').textContent=modo==='adm'?'Informe a senha do administrador.':'Informe seu usuário e senha.';
+  $('lk-t').textContent=modo==='adm'?'Modo administrador':'Acesso à plataforma';$('lk-d').textContent=modo==='adm'?'Informe a senha do administrador.':(PKG&&!ehV2()?'Este dados.json ainda usa senha única (sem usuários). Informe a senha única.':'Informe seu usuário e senha.');
   $('lk-ul').hidden=modo==='adm'||(PKG&&!ehV2());$('lk-lem').parentElement.hidden=modo==='adm';$('lk-cancel').hidden=modo!=='adm';$('lk-alt').hidden=!(modo==='user'&&!PKG);
   setTimeout(()=>($('lk-ul').hidden?$('lk-pw'):$('lk-us')).focus(),50)}
 async function abrir(login,pw,lembrar){const{c,raw,u}=await decifrarPacote(login,pw);K=raw;usuario=u;if(!ehV2())senhaV1=pw;publicado=c;aplicar(c,c.itens);
@@ -531,7 +532,7 @@ $('lk-f').addEventListener('submit',async e=>{e.preventDefault();const pw=$('lk-
   if(lkModo==='adm'){if(cfg.adminHash&&(await hashAdm(pw))!==cfg.adminHash){$('lk-err').textContent='Senha de administrador incorreta.';return}entrarAdm();return}
   if(!PKG){$('lk-err').textContent='Buscando dados…';await carregarDados()}
   if(!PKG){$('lk-err').textContent=motivo;$('lk-alt').hidden=false;return}
-  $('lk-err').textContent='Verificando…';try{await abrir($('lk-us').value,pw,$('lk-lem').checked)}catch(er){$('lk-err').textContent=ehV2()?'Usuário ou senha incorretos.':'Senha incorreta ou arquivo de dados inválido.'}});
+  $('lk-err').textContent='Verificando…';try{await abrir($('lk-us').value,pw,$('lk-lem').checked)}catch(er){$('lk-err').textContent=ehV2()?'Usuário ou senha incorretos.':'Senha incorreta. O dados.json publicado ainda é o antigo, de senha única: se você já cadastrou usuários, envie ao GitHub o novo dados.json gerado depois do cadastro.'}});
 $('lk-cancel').onclick=()=>{$('lock').hidden=true};
 $('lk-arq').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{PKG=JSON.parse(await f.text());if(PKG.formato!=='custeio-disolle')throw 0;$('lk-alt').hidden=true;lockShow('user','Arquivo carregado. Informe usuário e senha.')}catch(er){PKG=null;$('lk-err').textContent='Arquivo não reconhecido.'}});
 $('lk-setup').onclick=()=>{cfg=padrao();cfg.adminHash='';cfg.usuarios=[];K=null;usuario=null;$('lock').hidden=true;entrarAdm()};
